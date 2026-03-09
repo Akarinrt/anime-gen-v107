@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.0-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.1-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.0-ULTRA Loader Initialized")
+dprint("v1.4.1-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -54,11 +54,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.0-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.1-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.0-ULTRA ---")
+print("--- BOOTING WORKER v1.4.1-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -235,13 +235,13 @@ class VideoGenerator:
                     token=token
                 )
                 
-                dprint("Loading T5 Encoder (FP16) FORCED to CPU...")
+                dprint("Loading T5 Encoder (BFloat16) FORCED to CPU...")
                 # We use device_map={"": "cpu"} to be absolutely certain
                 t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
                     token=token,
-                    torch_dtype=torch.float16,
+                    torch_dtype=torch.bfloat16, # MATCH FLUX DTYPE
                     device_map={"": "cpu"}
                 )
                 
@@ -250,12 +250,12 @@ class VideoGenerator:
                     "black-forest-labs/FLUX.1-schnell", 
                     text_encoder_2=t5_encoder, 
                     tokenizer_2=self.t5_tokenizer,
-                    torch_dtype=torch.bfloat16, # Flux stays bfloat16
+                    torch_dtype=torch.bfloat16,
                     token=token
                 )
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline v1.4.0 optimized ---")
+                print("--- FLUX pipeline v1.4.1 optimized ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
