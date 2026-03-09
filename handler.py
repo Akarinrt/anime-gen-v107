@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.7-ULTRA (ID: 666) ---")
+print("--- [EMERGENCY BOOT] handler.py v1.5.0-ULTRA (ID: 555) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.7-ULTRA Loader Initialized")
+dprint("v1.5.0-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,11 +56,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.7-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.5.0-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.7-ULTRA (ID: 666) ---")
+print("--- BOOTING WORKER v1.5.0-ULTRA (ID: 555) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -199,16 +199,22 @@ class CloudStorage:
         # RETRY LOGIC (DNS/Network glitches)
         for attempt in range(3):
             try:
-                self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
-                url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
                 dprint(f"Uploaded to: {url} (Attempt {attempt+1})")
-                return url
+                return {"url": url}
             except Exception as e:
                 dprint(f"Upload Attempt {attempt+1} failed: {e}")
                 time.sleep(2)
         
-        dprint("All S3 upload attempts failed")
-        return None
+        # FINAL FALLBACK (v1.5.0): Return Base64 if S3 fails
+        try:
+            import base64
+            with open(local_path, "rb") as f:
+                b64_data = base64.b64encode(f.read()).decode("utf-8")
+            dprint(f"S3 failed. Falling back to Base64 (Size: {len(b64_data)} bytes)")
+            return {"b64": b64_data, "format": extension, "status": "success"}
+        except Exception as e:
+            dprint(f"Critical Fallback Error: {e}")
+            return None
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
@@ -329,8 +335,8 @@ class VideoGenerator:
             temp_path = "/tmp/generated_image.png"
             image.save(temp_path)
             
-            s3_url = self.storage.upload_file(temp_path, f"images/{os.urandom(4).hex()}.png")
-            return s3_url or "https://storage.runpod.io/flux_test_fallback.jpg"
+            result = self.storage.upload_file(temp_path, "png")
+            return result or {"status": "error", "message": "Save failed"}
         except Exception as e:
             print(f"FLUX Error: {e}")
             traceback.print_exc()
@@ -383,7 +389,7 @@ def handler(event):
     import gc # FORCE LOCAL IMPORT (SAFE)
     import torch
     
-    print(f"--- [JOB-START-ID-666] Handler v1.4.7-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-555] Handler v1.5.0-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
