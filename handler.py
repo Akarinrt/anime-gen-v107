@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.3.8-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.3.9-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.3.8-ULTRA Loader Initialized")
+dprint("v1.3.9-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -53,7 +53,7 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.8-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.9-ULTRA logic... ---\n")
 
 
 import gc
@@ -230,8 +230,6 @@ class VideoGenerator:
             else:
                 dprint("WARNING: No HF_TOKEN/HF_HUB_TOKEN found in environment!")
 
-            quant_config = BitsAndBytesConfig(load_in_8bit=True)
-            
             # Use a safer loading approach for gated repos
             dprint("Attempting to load tokenizer...")
             try:
@@ -241,17 +239,16 @@ class VideoGenerator:
                     token=token
                 )
                 
-                dprint("Loading Quantized T5 Encoder...")
+                dprint("Loading T5 Encoder (FP16) on CPU to save VRAM...")
                 t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
-                    quantization_config=quant_config,
                     token=token,
                     torch_dtype=torch.float16,
-                    device_map="auto"
+                    device_map={"": "cpu"} # STICK TO CPU
                 )
                 
-                dprint("Loading Flux Pipeline with Quantized T5...")
+                dprint("Loading Flux Pipeline (excluding T5 from GPU)...")
                 self.flux_pipe = FluxPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
                     text_encoder_2=t5_encoder, 
@@ -259,9 +256,10 @@ class VideoGenerator:
                     torch_dtype=torch.bfloat16,
                     token=token
                 )
+                # CRITICAL: We offload everything to CPU and call to() only when needed
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline loaded successfully ---")
+                print("--- FLUX pipeline optimized and loaded ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
