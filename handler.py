@@ -152,7 +152,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.5.6-ULTRA (Catbox Fallback)"
+WORKER_VERSION = "1.5.7-ULTRA (Tmpfiles Fallback)"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -204,25 +204,26 @@ class CloudStorage:
                     dprint(f"S3 Upload Attempt {attempt+1} failed: {e}")
                     time.sleep(2)
         
-        # CATBOX FALLBACK (v1.5.6-ULTRA): Fast file host instead of Base64
+        # TMPFILES.ORG FALLBACK (v1.5.7-ULTRA): Reliable alternative to Catbox
         try:
-            dprint(f"S3 unavailable or failed. Falling back to Catbox.moe for {local_path}...")
+            dprint(f"S3 unavailable or failed. Falling back to tmpfiles.org for {local_path}...")
             import requests
             with open(local_path, 'rb') as f:
                 response = requests.post(
-                    'https://catbox.moe/user/api.php',
-                    data={'reqtype': 'fileupload'},
-                    files={'fileToUpload': f}
+                    'https://tmpfiles.org/api/v1/upload',
+                    files={'file': f}
                 )
             if response.status_code == 200:
-                catbox_url = response.text.strip()
-                dprint(f"Catbox Upload Success: {catbox_url}")
-                # We return a dict with url so API knows it's an external link
-                return {"url": catbox_url, "format": extension, "status": "success", "catbox": True}
-            else:
-                dprint(f"Catbox failed with status: {response.status_code} - {response.text}")
+                json_res = response.json()
+                if "data" in json_res and "url" in json_res["data"]:
+                    # Convert view URL to direct download URL
+                    view_url = json_res["data"]["url"]
+                    dl_url = view_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                    dprint(f"Tmpfiles Upload Success: {dl_url}")
+                    return {"url": dl_url, "format": extension, "status": "success", "tmpfiles": True}
+            dprint(f"Tmpfiles failed: {response.status_code} - {response.text}")
         except Exception as e:
-            dprint(f"Catbox Fallback Error: {e}")
+            dprint(f"Tmpfiles Fallback Error: {e}")
             
         # FINAL FALLBACK: Base64 (Only use if Catbox also fails, but avoid for video)
         if extension in ["png", "jpg"]:
