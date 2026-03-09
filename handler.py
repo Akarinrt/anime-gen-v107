@@ -6,14 +6,14 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # ==========================================================
-# --- STEALTH STABILIZATION PATCHES (v1.2.6-ULTRA) ---
-# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Re-enable Offload
+# --- STEALTH STABILIZATION PATCHES (v1.2.7-ULTRA) ---
+# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Fix Load Token
 # ==========================================================
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.2.6-ULTRA ---")
+print("--- BOOTING WORKER v1.2.7-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -82,7 +82,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.2.6-ultra"
+WORKER_VERSION = "1.2.7-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -125,6 +125,7 @@ class VideoGenerator:
                 torch.nn.Module.set_submodule = set_submodule_universal
 
             # Load T5 and Tokenizer separately on CPU
+            token = os.getenv("HF_TOKEN")
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             self.t5_tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2", token=token)
             self.t5_encoder = T5EncoderModel.from_pretrained(
