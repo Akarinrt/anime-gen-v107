@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.5.3-ULTRA (ID: 222) ---")
+print("--- [EMERGENCY BOOT] handler.py v1.5.4-ULTRA (ID: 111) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.5.3-ULTRA Loader Initialized")
+dprint("v1.5.4-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,11 +56,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.5.3-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.5.4-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.5.3-ULTRA (ID: 222) ---")
+print("--- BOOTING WORKER v1.5.4-ULTRA (ID: 111) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -362,18 +362,27 @@ class VideoGenerator:
             
             self.load_video(model_name)
             
-            # --- BASE64 INPUT HANDLING (v1.5.2) ---
-            if image_url.startswith("data:image") or len(image_url) > 1000:
+            # --- ROBUST BASE64 INPUT HANDLING (v1.5.4) ---
+            # Any string that doesn't look like a URL and is very long is treated as Base64
+            is_b64 = False
+            if image_url.startswith("data:image"):
+                is_b64 = True
+            elif len(image_url) > 100 or image_url.count("/") < 2 or "==" in image_url:
+                is_b64 = True
+                
+            if is_b64:
                 import base64
                 from io import BytesIO
                 from PIL import Image
-                dprint("Detected Base64 image input for animation")
+                dprint(f"Detected Base64/Direct image input (Len: {len(image_url)})")
                 if "base64," in image_url:
                     image_url = image_url.split("base64,")[1]
+                # Strip potential whitespace
+                image_url = image_url.strip()
                 image_data = base64.b64decode(image_url)
                 image = Image.open(BytesIO(image_data)).convert("RGB").resize((1024, 576))
             else:
-                dprint(f"Downloading image for animation: {image_url}")
+                dprint(f"Downloading image for animation: {image_url[:100]}...")
                 image = load_image(image_url).resize((1024, 576))
             
             dprint("Generating video frames with SVD...")
@@ -414,7 +423,7 @@ def handler(event):
     import gc # FORCE LOCAL IMPORT (SAFE)
     import torch
     
-    print(f"--- [JOB-START-ID-222] Handler v1.5.3-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-111] Handler v1.5.4-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
