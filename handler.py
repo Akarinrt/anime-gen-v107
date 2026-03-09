@@ -5,10 +5,40 @@ import builtins
 import importlib.util
 from unittest.mock import MagicMock
 
-# ==========================================================
 # --- STEALTH STABILIZATION PATCHES (v1.2.7-ULTRA) ---
-# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Fix Load Token
+# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Dynamic Hot-Fixing
 # ==========================================================
+
+import urllib.request
+import traceback
+
+# --- DYNAMIC HOT-UPDATE LOGIC ---
+# If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
+REMOTE_URL = os.getenv("REMOTE_HANDLER_URL")
+if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
+    try:
+        print(f"\n--- [HOT-UPDATE] Fetching latest logic from {REMOTE_URL} ---")
+        # Define a special header to avoid caching if possible
+        req = urllib.request.Request(REMOTE_URL, headers={'User-Agent': 'RunPod-Dynamic-Loader'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            code = response.read().decode('utf-8')
+            print(f"--- [HOT-UPDATE] Successfully downloaded {len(code)} bytes ---")
+            
+            # Execute in global scope. This defines the 'handler' and all dependencies.
+            # We set a flag to prevent infinite recursion if the remote code also contains this loader.
+            os.environ["DISABLE_DYNAMIC_LOAD"] = "1"
+            exec(code, globals())
+            
+            print("--- [HOT-UPDATE] Remote handler active. Bootloader exiting. ---")
+            # The last line of the executed code will be runpod.serverless.start(...)
+            # So we don't need to do anything else.
+            import sys
+            sys.exit(0)
+    except Exception as e:
+        print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
+        traceback.print_exc()
+        print("--- [HOT-UPDATE] Falling back to local v1.2.7-ULTRA logic... ---\n")
+
 
 import gc
 
