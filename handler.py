@@ -4,9 +4,10 @@ import types
 import builtins
 import importlib.util
 from unittest.mock import MagicMock
+import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.1-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.2-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.1-ULTRA Loader Initialized")
+dprint("v1.4.2-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -54,11 +55,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.1-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.2-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.1-ULTRA ---")
+print("--- BOOTING WORKER v1.4.2-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -255,7 +256,7 @@ class VideoGenerator:
                 )
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline v1.4.1 optimized ---")
+                print("--- FLUX pipeline v1.4.2 optimized ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
