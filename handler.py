@@ -6,14 +6,14 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # ==========================================================
-# --- STEALTH STABILIZATION PATCHES (v1.1.4-ULTRA) ---
-# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Total Memory Control
+# --- STEALTH STABILIZATION PATCHES (v1.1.5-ULTRA) ---
+# Goal: Hide flash-attn, fix infer_schema, HF Auth, and 8-bit Quantization
 # ==========================================================
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.1.4-ULTRA ---")
+print("--- BOOTING WORKER v1.1.5-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -82,7 +82,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.1.4-ultra"
+WORKER_VERSION = "1.1.5-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -109,15 +109,28 @@ class VideoGenerator:
             import torch
             self.device = get_device()
             token = os.getenv("HF_TOKEN")
-            print(f"--- Loading FLUX.1 with Low CPU Mem Usage & Model Offload ---")
+            print(f"--- Loading FLUX.1 with 8-bit T5 & Model Offload ---")
             torch.cuda.empty_cache()
+            
+            from transformers import T5EncoderModel, BitsAndBytesConfig
+            
+            # Load T5 in 8-bit to save ~10GB VRAM
+            quant_config = BitsAndBytesConfig(load_in_8bit=True)
+            text_encoder_2 = T5EncoderModel.from_pretrained(
+                "black-forest-labs/FLUX.1-schnell",
+                subfolder="text_encoder_2",
+                quantization_config=quant_config,
+                token=token,
+                torch_dtype=torch.float16 # BitsAndBytes needs float16 for base
+            )
+            
             self.flux_pipe = FluxPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-schnell", 
+                text_encoder_2=text_encoder_2,
                 torch_dtype=torch.bfloat16,
                 token=token,
                 low_cpu_mem_usage=True
             )
-            # Use model offload instead of sequential (often more stable/faster)
             self.flux_pipe.enable_model_cpu_offload()
             torch.cuda.empty_cache()
             
