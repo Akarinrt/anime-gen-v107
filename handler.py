@@ -37,13 +37,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.0-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.1-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.0-ULTRA ---")
+print("--- BOOTING WORKER v1.3.1-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -154,13 +154,19 @@ class VideoGenerator:
                 print("--- Applying UNIVERSAL set_submodule patch to torch.nn.Module ---")
                 torch.nn.Module.set_submodule = set_submodule_universal
 
-            # Load T5 and Tokenizer separately on CPU
-            token = os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN")
+            # --- DEEP DIAGNOSTICS FOR HF AUTH ---
+            print("--- [HF-DIAGNOSTICS] Checking Environment Variables ---")
+            hf_vars = {k: v for k, v in os.environ.items() if "HF" in k or "TOKEN" in k}
+            for k, v in hf_vars.items():
+                masked_v = f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "***"
+                print(f"--- [HF-DIAGNOSTICS] {k}: {masked_v} ---")
+            
+            token = os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
             if token:
-                print(f"--- HF_TOKEN detected: {token[:4]}...{token[-4:]} ---")
-                os.environ["HF_HUB_TOKEN"] = token # Force global env for internal HF libs
+                print(f"--- [HF-DIAGNOSTICS] Selected Token: {token[:4]}...{token[-4:]} ---")
+                os.environ["HF_HUB_TOKEN"] = token 
             else:
-                print("--- WARNING: HF_TOKEN is MISSING! ---")
+                print("--- [HF-DIAGNOSTICS] WARNING: No HF_TOKEN/HF_HUB_TOKEN found in environment! ---")
 
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             
@@ -173,6 +179,7 @@ class VideoGenerator:
                     token=token,
                     trust_remote_code=True
                 )
+                print("--- [DEBUG] Tokenizer loaded successfully ---")
                 print("--- [DEBUG] Tokenizer loaded successfully ---")
                 
                 print(f"--- [DEBUG] Attempting to load T5 Encoder... ---")
