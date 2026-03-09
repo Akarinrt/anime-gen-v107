@@ -6,13 +6,21 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # ==========================================================
-# --- STEALTH STABILIZATION PATCHES (v1.0.9-ULTRA) ---
-# Goal: Hide flash-attn safely and fix infer_schema return
+# --- STEALTH STABILIZATION PATCHES (v1.1.4-ULTRA) ---
+# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Total Memory Control
 # ==========================================================
 
+import gc
+
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.0.9-ULTRA ---")
+print("--- BOOTING WORKER v1.1.4-ULTRA ---")
 print("="*50 + "\n")
+
+# 0. Global Memory Optimizations
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
+
+# 0. Global Memory Optimizations
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # 1. Broad Stealth Import Patching (Proven to hide flash-attn)
 orig_find_spec = importlib.util.find_spec
@@ -74,7 +82,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.0.9-ultra"
+WORKER_VERSION = "1.1.4-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -100,21 +108,35 @@ class VideoGenerator:
             from diffusers import FluxPipeline
             import torch
             self.device = get_device()
+            token = os.getenv("HF_TOKEN")
+            print(f"--- Loading FLUX.1 with Low CPU Mem Usage & Model Offload ---")
+            torch.cuda.empty_cache()
             self.flux_pipe = FluxPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-schnell", 
-                torch_dtype=torch.bfloat16
-            ).to(self.device)
+                torch_dtype=torch.bfloat16,
+                token=token,
+                low_cpu_mem_usage=True
+            )
+            # Use model offload instead of sequential (often more stable/faster)
+            self.flux_pipe.enable_model_cpu_offload()
+            torch.cuda.empty_cache()
             
     def load_video(self, model_name="svd"):
         if self.video_pipe is None:
-            print(f"--- Loading {model_name} ---")
+            print(f"--- Loading {model_name} with Low CPU Mem Usage & Model Offload ---")
             from diffusers import StableVideoDiffusionPipeline
             import torch
             self.device = get_device()
+            token = os.getenv("HF_TOKEN")
+            torch.cuda.empty_cache()
             self.video_pipe = StableVideoDiffusionPipeline.from_pretrained(
                 "stabilityai/stable-video-diffusion-img2vid-xt", 
-                torch_dtype=torch.float16, variant="fp16"
-            ).to(self.device)
+                torch_dtype=torch.float16, variant="fp16",
+                token=token,
+                low_cpu_mem_usage=True
+            )
+            self.video_pipe.enable_model_cpu_offload()
+            torch.cuda.empty_cache()
 
     def generate_image(self, prompt):
         try:
@@ -148,6 +170,13 @@ gen = None
 
 def handler(event):
     global gen
+    
+    # Aggressive cleanup at start of EVERY job to clear previous failures
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        
     if gen is None:
         gen = VideoGenerator()
         
