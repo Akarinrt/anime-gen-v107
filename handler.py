@@ -360,6 +360,11 @@ class VideoGenerator:
             from diffusers.utils import load_image, export_to_video
             import torch
             
+            # --- HANDLE DICTIONARY INPUT (v1.5.4 Fix) ---
+            if isinstance(image_url, dict):
+                dprint(f"Unpacking dictionary image input: {list(image_url.keys())}")
+                image_url = image_url.get("b64") or image_url.get("url") or ""
+            
             self.load_video(model_name)
             
             # --- ROBUST BASE64 INPUT HANDLING (v1.5.4) ---
@@ -420,14 +425,15 @@ gen = None
 
 def handler(event):
     global gen
-    import gc # FORCE LOCAL IMPORT (SAFE)
+    import gc 
     import torch
     
     print(f"--- [JOB-START-ID-111] Handler v1.5.4-ULTRA processing event ---")
     
-    # Aggressive cleanup at start of EVERY job to clear previous failures
+    # Aggressive cleanup at start of EVERY job
     gc.collect()
     if torch.cuda.is_available():
+        torch.cuda.empty_cache()
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
         
