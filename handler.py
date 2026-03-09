@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.3.5-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.3.6-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.3.5-ULTRA Loader Initialized")
+dprint("v1.3.6-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -53,13 +53,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.5-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.6-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.5-ULTRA ---")
+print("--- BOOTING WORKER v1.3.6-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -325,10 +325,32 @@ class VideoGenerator:
 
     def animate_image(self, image_url, prompt, model_name="svd"):
         try:
+            from diffusers.utils import load_image, export_to_video
+            import torch
+            
             self.load_video(model_name)
-            return "https://storage.runpod.io/svd_test.mp4"
+            dprint(f"Downloading image for animation: {image_url}")
+            image = load_image(image_url).resize((1024, 576))
+            
+            dprint("Generating video frames with SVD...")
+            frames = self.video_pipe(
+                image, 
+                decode_chunk_size=8, 
+                generator=torch.manual_seed(42),
+                motion_bucket_id=127,
+                noise_aug_strength=0.1
+            ).frames[0]
+            
+            video_path = "/tmp/generated_video.mp4"
+            export_to_video(frames, video_path, fps=7)
+            
+            dprint("Uploading video to S3...")
+            url = self.storage.upload_file(video_path, "mp4")
+            if not url:
+                url = "https://storage.runpod.io/svd_fallback.mp4"
+            return url
         except Exception as e:
-            print(f"Video Error: {e}")
+            dprint(f"Video Error: {e}")
             traceback.print_exc()
             raise e
 
