@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.6-ULTRA (ID: 888) ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.7-ULTRA (ID: 666) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.6-ULTRA Loader Initialized")
+dprint("v1.4.7-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,11 +56,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.6-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.7-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.6-ULTRA (ID: 888) ---")
+print("--- BOOTING WORKER v1.4.7-ULTRA (ID: 666) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -78,7 +78,21 @@ def patched_sdpa(*args, **kwargs):
 F.scaled_dot_product_attention = patched_sdpa
 print("--- [PATCH] Global SDPA 'enable_gqa' fix applied ---")
 
-# 1. Broad Stealth Import Patching (Proven to hide flash-attn)
+# 0.7. DNS Diagnostics
+import socket
+def check_dns(hostname):
+    try:
+        ip = socket.gethostbyname(hostname)
+        print(f"--- [DNS] {hostname} resolved to {ip} ---")
+        return True
+    except Exception as e:
+        print(f"--- [DNS ERROR] Could not resolve {hostname}: {e} ---")
+        return False
+
+check_dns("google.com")
+check_dns("huggingface.co")
+check_dns("storage.runpod.io")
+check_dns("r3.storage.runpod.io") # Common alternate
 orig_find_spec = importlib.util.find_spec
 def patched_find_spec(name, package=None):
     if name and ("flash_attn" in name or "flash-attn" in name):
@@ -179,20 +193,22 @@ class CloudStorage:
             dprint("S3 Client not available, skipping upload")
             return None
         
-        import uuid
+        import uuid, time
         file_name = f"{uuid.uuid4()}.{extension}"
-        try:
-            # Ensure bucket exists (optional, or just try upload)
-            self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
-            
-            # Construct URL
-            # Note: RunPod storage URLs might differ, adjusting to standard S3
-            url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
-            dprint(f"Uploaded to: {url}")
-            return url
-        except Exception as e:
-            dprint(f"Upload Error: {e}")
-            return None
+        
+        # RETRY LOGIC (DNS/Network glitches)
+        for attempt in range(3):
+            try:
+                self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
+                url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
+                dprint(f"Uploaded to: {url} (Attempt {attempt+1})")
+                return url
+            except Exception as e:
+                dprint(f"Upload Attempt {attempt+1} failed: {e}")
+                time.sleep(2)
+        
+        dprint("All S3 upload attempts failed")
+        return None
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
@@ -269,7 +285,7 @@ class VideoGenerator:
                 )
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline v1.4.6 optimized ---")
+                print("--- FLUX pipeline v1.4.7 optimized ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
@@ -367,7 +383,7 @@ def handler(event):
     import gc # FORCE LOCAL IMPORT (SAFE)
     import torch
     
-    print(f"--- [JOB-START-ID-888] Handler v1.4.6-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-666] Handler v1.4.7-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
