@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [INITIAL BOOT] handler.py v1.3.2-ULTRA ---")
+print("--- [INITIAL BOOT] handler.py v1.3.3-ULTRA ---")
 print("!"*30 + "\n")
 
 # --- STEALTH STABILIZATION PATCHES (v1.2.9-ULTRA) ---
@@ -15,6 +15,16 @@ print("!"*30 + "\n")
 
 import urllib.request
 import traceback
+
+# --- IN-RESPONSE DIAGNOSTICS ---
+DIAG_LOG = []
+def dprint(msg):
+    global DIAG_LOG
+    s = f"--- [DIAG] {msg} ---"
+    print(s)
+    DIAG_LOG.append(s)
+
+dprint("v1.3.3-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -41,13 +51,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.2-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.3-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.2-ULTRA ---")
+print("--- BOOTING WORKER v1.3.3-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -159,23 +169,23 @@ class VideoGenerator:
                 torch.nn.Module.set_submodule = set_submodule_universal
 
             # --- DEEP DIAGNOSTICS FOR HF AUTH ---
-            print("--- [HF-DIAGNOSTICS] Checking Environment Variables ---")
+            dprint("Checking Environment Variables")
             hf_vars = {k: v for k, v in os.environ.items() if "HF" in k or "TOKEN" in k}
             for k, v in hf_vars.items():
                 masked_v = f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "***"
-                print(f"--- [HF-DIAGNOSTICS] {k}: {masked_v} ---")
+                dprint(f"{k}: {masked_v}")
             
             token = os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
             if token:
-                print(f"--- [HF-DIAGNOSTICS] Selected Token: {token[:4]}...{token[-4:]} ---")
+                dprint(f"Selected Token: {token[:4]}...{token[-4:]}")
                 os.environ["HF_HUB_TOKEN"] = token 
             else:
-                print("--- [HF-DIAGNOSTICS] WARNING: No HF_TOKEN/HF_HUB_TOKEN found in environment! ---")
+                dprint("WARNING: No HF_TOKEN/HF_HUB_TOKEN found in environment!")
 
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             
             # Use a safer loading approach for gated repos
-            print(f"--- [DEBUG] Attempting to load tokenizer with token... ---")
+            dprint("Attempting to load tokenizer with token...")
             try:
                 self.t5_tokenizer = AutoTokenizer.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
@@ -183,10 +193,9 @@ class VideoGenerator:
                     token=token,
                     trust_remote_code=True
                 )
-                print("--- [DEBUG] Tokenizer loaded successfully ---")
-                print("--- [DEBUG] Tokenizer loaded successfully ---")
+                dprint("Tokenizer loaded successfully")
                 
-                print(f"--- [DEBUG] Attempting to load T5 Encoder... ---")
+                dprint("Attempting to load T5 Encoder...")
                 self.t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
@@ -195,7 +204,7 @@ class VideoGenerator:
                     torch_dtype=torch.float16,
                     device_map={"": "cpu"}
                 )
-                print("--- [DEBUG] T5 Encoder loaded successfully ---")
+                dprint("T5 Encoder loaded successfully")
                 
                 # Load Flux to CPU first, then enable offload
                 self.flux_pipe = FluxPipeline.from_pretrained(
@@ -315,7 +324,8 @@ def handler(event):
             
         return {"status": "error", "message": f"Invalid job type: {job_type}"}
     except Exception as e:
-        error_msg = f"Handler CRASH: {str(e)}"
+        diag_str = "\n".join(DIAG_LOG)
+        error_msg = f"Handler CRASH: {str(e)}\nDIAGNOSTICS:\n{diag_str}"
         print(error_msg)
         traceback.print_exc()
         return {"status": "error", "message": error_msg}
