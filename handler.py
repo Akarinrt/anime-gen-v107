@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.4-ULTRA (ID: 999) ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.5-ULTRA (ID: 777) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.4-ULTRA Loader Initialized")
+dprint("v1.4.5-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,15 +56,26 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.4-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.5-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.4-ULTRA (ID: 999) ---")
+print("--- BOOTING WORKER v1.4.5-ULTRA (ID: 777) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
+
+# 0.5. Global Torch Compatibility Patch (v1.4.5)
+import torch
+import torch.nn.functional as F
+orig_sdpa = F.scaled_dot_product_attention
+def patched_sdpa(*args, **kwargs):
+    if 'enable_gqa' in kwargs:
+        kwargs.pop('enable_gqa')
+    return orig_sdpa(*args, **kwargs)
+F.scaled_dot_product_attention = patched_sdpa
+print("--- [PATCH] Global SDPA 'enable_gqa' fix applied ---")
 
 # 1. Broad Stealth Import Patching (Proven to hide flash-attn)
 orig_find_spec = importlib.util.find_spec
@@ -257,7 +268,7 @@ class VideoGenerator:
                 )
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline v1.4.2 optimized ---")
+                print("--- FLUX pipeline v1.4.5 optimized ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
@@ -355,7 +366,7 @@ def handler(event):
     import gc # FORCE LOCAL IMPORT (SAFE)
     import torch
     
-    print(f"--- [JOB-START-ID-999] Handler v1.4.4-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-777] Handler v1.4.5-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
