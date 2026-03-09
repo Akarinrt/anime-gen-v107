@@ -6,23 +6,28 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # ==========================================================
-# --- STEALTH STABILIZATION PATCHES (v1.0.8-ULTRA) ---
-# Goal: Fix "concatenate str" error and ignore flash-attn
+# --- STEALTH STABILIZATION PATCHES (v1.0.9-ULTRA) ---
+# Goal: Hide flash-attn safely and fix infer_schema return
 # ==========================================================
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.0.8-ULTRA ---")
+print("--- BOOTING WORKER v1.0.9-ULTRA ---")
 print("="*50 + "\n")
 
-# 1. Surgical Mocking (Replaces broad import patches)
-# This is safer than patching __import__ directly
-try:
-    mock_fa = MagicMock()
-    sys.modules["flash_attn"] = mock_fa
-    sys.modules["flash_attn.flash_attn_interface"] = mock_fa
-    sys.modules["flash-attn"] = mock_fa
-    print("--- [STABILIZER] flash_attn surgical mocks active ---")
-except: pass
+# 1. Broad Stealth Import Patching (Proven to hide flash-attn)
+orig_find_spec = importlib.util.find_spec
+def patched_find_spec(name, package=None):
+    if name and ("flash_attn" in name or "flash-attn" in name):
+        return None
+    return orig_find_spec(name, package)
+importlib.util.find_spec = patched_find_spec
+
+orig_import = builtins.__import__
+def patched_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if name and ("flash_attn" in name or "flash-attn" in name):
+        raise ImportError(f"Bypassed {name} via stealth patch")
+    return orig_import(name, globals, locals, fromlist, level)
+builtins.__import__ = patched_import
 
 # 2. Aggressive Torch Library Signature Patching
 # Fixed: Return dummy string instead of None to avoid TypeError in concatenation
@@ -69,7 +74,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.0.8-ultra"
+WORKER_VERSION = "1.0.9-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
