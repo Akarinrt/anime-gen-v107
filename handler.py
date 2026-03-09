@@ -37,13 +37,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.2.9-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.0-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.2.9-ULTRA ---")
+print("--- BOOTING WORKER v1.3.0-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -155,15 +155,17 @@ class VideoGenerator:
                 torch.nn.Module.set_submodule = set_submodule_universal
 
             # Load T5 and Tokenizer separately on CPU
-            token = os.getenv("HF_TOKEN")
+            token = os.getenv("HF_TOKEN") or os.getenv("HF_HUB_TOKEN")
             if token:
                 print(f"--- HF_TOKEN detected: {token[:4]}...{token[-4:]} ---")
+                os.environ["HF_HUB_TOKEN"] = token # Force global env for internal HF libs
             else:
                 print("--- WARNING: HF_TOKEN is MISSING! ---")
 
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             
             # Use a safer loading approach for gated repos
+            print(f"--- [DEBUG] Attempting to load tokenizer with token... ---")
             try:
                 self.t5_tokenizer = AutoTokenizer.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
@@ -171,6 +173,9 @@ class VideoGenerator:
                     token=token,
                     trust_remote_code=True
                 )
+                print("--- [DEBUG] Tokenizer loaded successfully ---")
+                
+                print(f"--- [DEBUG] Attempting to load T5 Encoder... ---")
                 self.t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
@@ -179,6 +184,7 @@ class VideoGenerator:
                     torch_dtype=torch.float16,
                     device_map={"": "cpu"}
                 )
+                print("--- [DEBUG] T5 Encoder loaded successfully ---")
                 
                 # Load Flux to CPU first, then enable offload
                 self.flux_pipe = FluxPipeline.from_pretrained(
