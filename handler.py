@@ -5,7 +5,7 @@ import builtins
 import importlib.util
 from unittest.mock import MagicMock
 
-# --- STEALTH STABILIZATION PATCHES (v1.2.7-ULTRA) ---
+# --- STEALTH STABILIZATION PATCHES (v1.2.9-ULTRA) ---
 # Goal: Hide flash-attn, fix infer_schema, HF Auth, and Dynamic Hot-Fixing
 # ==========================================================
 
@@ -37,13 +37,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.2.7-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.2.9-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.2.7-ULTRA ---")
+print("--- BOOTING WORKER v1.2.9-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -112,7 +112,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.2.7-ultra"
+WORKER_VERSION = "1.2.9-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -156,28 +156,47 @@ class VideoGenerator:
 
             # Load T5 and Tokenizer separately on CPU
             token = os.getenv("HF_TOKEN")
+            if token:
+                print(f"--- HF_TOKEN detected: {token[:4]}...{token[-4:]} ---")
+            else:
+                print("--- WARNING: HF_TOKEN is MISSING! ---")
+
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
-            self.t5_tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2", token=token)
-            self.t5_encoder = T5EncoderModel.from_pretrained(
-                "black-forest-labs/FLUX.1-schnell",
-                subfolder="text_encoder_2",
-                quantization_config=quant_config,
-                token=token,
-                torch_dtype=torch.float16,
-                device_map={"": "cpu"}
-            )
             
-            # Load Flux to CPU first, then enable offload
-            self.flux_pipe = FluxPipeline.from_pretrained(
-                "black-forest-labs/FLUX.1-schnell", 
-                text_encoder_2=None, 
-                torch_dtype=torch.bfloat16,
-                token=token,
-                low_cpu_mem_usage=True
-            )
-            self.flux_pipe.enable_model_cpu_offload()
-            torch.cuda.empty_cache()
-            print("--- FLUX pipeline loaded with CPU offload ---")
+            # Use a safer loading approach for gated repos
+            try:
+                self.t5_tokenizer = AutoTokenizer.from_pretrained(
+                    "black-forest-labs/FLUX.1-schnell", 
+                    subfolder="tokenizer_2", 
+                    token=token,
+                    trust_remote_code=True
+                )
+                self.t5_encoder = T5EncoderModel.from_pretrained(
+                    "black-forest-labs/FLUX.1-schnell",
+                    subfolder="text_encoder_2",
+                    quantization_config=quant_config,
+                    token=token,
+                    torch_dtype=torch.float16,
+                    device_map={"": "cpu"}
+                )
+                
+                # Load Flux to CPU first, then enable offload
+                self.flux_pipe = FluxPipeline.from_pretrained(
+                    "black-forest-labs/FLUX.1-schnell", 
+                    text_encoder_2=None, 
+                    torch_dtype=torch.bfloat16,
+                    token=token,
+                    low_cpu_mem_usage=True
+                )
+                self.flux_pipe.enable_model_cpu_offload()
+                torch.cuda.empty_cache()
+                print("--- FLUX pipeline loaded with CPU offload ---")
+            except Exception as e:
+                err_msg = str(e)
+                if "gated repo" in err_msg.lower() or "401" in err_msg:
+                    print("--- [ERROR] Hugging Face Authentication Failed (Gated Repo) ---")
+                    print("--- Please ensure you have accepted the terms at: https://huggingface.co/black-forest-labs/FLUX.1-schnell ---")
+                raise e
             
     def load_video(self, model_name="svd"):
         if self.video_pipe is None:
