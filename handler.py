@@ -6,14 +6,14 @@ import importlib.util
 from unittest.mock import MagicMock
 
 # ==========================================================
-# --- STEALTH STABILIZATION PATCHES (v1.1.5-ULTRA) ---
-# Goal: Hide flash-attn, fix infer_schema, HF Auth, and 8-bit Quantization
+# --- STEALTH STABILIZATION PATCHES (v1.2.6-ULTRA) ---
+# Goal: Hide flash-attn, fix infer_schema, HF Auth, and Re-enable Offload
 # ==========================================================
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.1.5-ULTRA ---")
+print("--- BOOTING WORKER v1.2.6-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -82,7 +82,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.1.5-ultra"
+WORKER_VERSION = "1.2.6-ultra"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -108,31 +108,45 @@ class VideoGenerator:
             from diffusers import FluxPipeline
             import torch
             self.device = get_device()
-            token = os.getenv("HF_TOKEN")
-            print(f"--- Loading FLUX.1 with 8-bit T5 & Model Offload ---")
-            torch.cuda.empty_cache()
+            from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
             
-            from transformers import T5EncoderModel, BitsAndBytesConfig
-            
-            # Load T5 in 8-bit to save ~10GB VRAM
+            # UNIVERSAL MONKEYPATCH: Patch torch.nn.Module itself!
+            # This is the nuclear option because every transformer inherit from this.
+            def set_submodule_universal(self, name, module):
+                target = self
+                if "." in name:
+                    path, name = name.rsplit(".", 1)
+                    for part in path.split("."):
+                        target = getattr(target, part)
+                setattr(target, name, module)
+
+            if not hasattr(torch.nn.Module, "set_submodule"):
+                print("--- Applying UNIVERSAL set_submodule patch to torch.nn.Module ---")
+                torch.nn.Module.set_submodule = set_submodule_universal
+
+            # Load T5 and Tokenizer separately on CPU
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
-            text_encoder_2 = T5EncoderModel.from_pretrained(
+            self.t5_tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2", token=token)
+            self.t5_encoder = T5EncoderModel.from_pretrained(
                 "black-forest-labs/FLUX.1-schnell",
                 subfolder="text_encoder_2",
                 quantization_config=quant_config,
                 token=token,
-                torch_dtype=torch.float16 # BitsAndBytes needs float16 for base
+                torch_dtype=torch.float16,
+                device_map={"": "cpu"}
             )
             
+            # Load Flux to CPU first, then enable offload
             self.flux_pipe = FluxPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-schnell", 
-                text_encoder_2=text_encoder_2,
+                text_encoder_2=None, 
                 torch_dtype=torch.bfloat16,
                 token=token,
                 low_cpu_mem_usage=True
             )
             self.flux_pipe.enable_model_cpu_offload()
             torch.cuda.empty_cache()
+            print("--- FLUX pipeline loaded with CPU offload ---")
             
     def load_video(self, model_name="svd"):
         if self.video_pipe is None:
@@ -154,8 +168,27 @@ class VideoGenerator:
     def generate_image(self, prompt):
         try:
             self.load_flux()
-            # Simulation for connectivity test
-            return "https://storage.runpod.io/flux_test.jpg"
+            
+            # Pre-encode with T5
+            print(f"--- Pre-encoding prompt with 8-bit T5 ---")
+            inputs = self.t5_tokenizer(prompt, return_tensors="pt", padding="max_length", max_length=512, truncation=True).to(self.t5_encoder.device)
+            with torch.no_grad():
+                prompt_embeds = self.t5_encoder(inputs.input_ids).last_hidden_state
+                
+            # Generate image passing pre-encoded embeds
+            image = self.flux_pipe(
+                prompt_embeds=prompt_embeds,
+                num_inference_steps=4,
+                guidance_scale=0.0,
+                generator=torch.Generator("cpu").manual_seed(0)
+            ).images[0]
+            # For now, save the image and return a URL
+            # In a real scenario, you'd upload this to storage
+            # and return the public URL.
+            image_path = "/tmp/generated_image.jpg"
+            image.save(image_path)
+            # This is a placeholder. In a real app, you'd upload `image_path` to cloud storage.
+            return "https://storage.runpod.io/flux_test.jpg" # Placeholder URL
         except Exception as e:
             print(f"FLUX Error: {e}")
             traceback.print_exc()
