@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.3.7-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.3.8-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.3.7-ULTRA Loader Initialized")
+dprint("v1.3.8-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -53,13 +53,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.7-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.8-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.7-ULTRA ---")
+print("--- BOOTING WORKER v1.3.8-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -233,43 +233,39 @@ class VideoGenerator:
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             
             # Use a safer loading approach for gated repos
-            dprint("Attempting to load tokenizer with token...")
+            dprint("Attempting to load tokenizer...")
             try:
                 self.t5_tokenizer = AutoTokenizer.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
                     subfolder="tokenizer_2", 
-                    token=token,
-                    trust_remote_code=True
+                    token=token
                 )
-                dprint("Tokenizer loaded successfully")
                 
-                dprint("Attempting to load T5 Encoder...")
-                self.t5_encoder = T5EncoderModel.from_pretrained(
+                dprint("Loading Quantized T5 Encoder...")
+                t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
                     quantization_config=quant_config,
                     token=token,
                     torch_dtype=torch.float16,
-                    device_map={"": "cpu"}
+                    device_map="auto"
                 )
-                dprint("T5 Encoder loaded successfully")
                 
-                # Load Flux to CPU first, then enable offload
+                dprint("Loading Flux Pipeline with Quantized T5...")
                 self.flux_pipe = FluxPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
-                    text_encoder_2=None, 
+                    text_encoder_2=t5_encoder, 
+                    tokenizer_2=self.t5_tokenizer,
                     torch_dtype=torch.bfloat16,
-                    token=token,
-                    low_cpu_mem_usage=True
+                    token=token
                 )
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline loaded with CPU offload ---")
+                print("--- FLUX pipeline loaded successfully ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
                     print("--- [ERROR] Hugging Face Authentication Failed (Gated Repo) ---")
-                    print("--- Please ensure you have accepted the terms at: https://huggingface.co/black-forest-labs/FLUX.1-schnell ---")
                 raise e
             
     def load_video(self, model_name="svd"):
@@ -291,33 +287,32 @@ class VideoGenerator:
 
     def generate_image(self, prompt):
         try:
+    def generate_image(self, prompt):
+        try:
             self.load_flux()
             
-            # Pre-encode with T5
-            print(f"--- Pre-encoding prompt with 8-bit T5 ---")
-            inputs = self.t5_tokenizer(prompt, return_tensors="pt", padding="max_length", max_length=512, truncation=True).to(self.t5_encoder.device)
-            with torch.no_grad():
-                prompt_embeds = self.t5_encoder(inputs.input_ids).last_hidden_state
-                
-            # Generate image passing pre-encoded embeds
+            # 2. RUN INFERENCE
+            print(f"--- Running FLUX Inference ---")
             image = self.flux_pipe(
-                prompt_embeds=prompt_embeds,
-                num_inference_steps=4,
+                prompt=prompt,
+                num_inference_steps=4, # Schnell
                 guidance_scale=0.0,
-                generator=torch.Generator("cpu").manual_seed(0)
+                width=1024,
+                height=1024,
+                max_sequence_length=512,
+                generator=torch.Generator("cpu").manual_seed(42)
             ).images[0]
-            # For now, save the image and return a URL
-            # In a real scenario, you'd upload this to storage
-            # and return the public URL.
-            image_path = "/tmp/generated_image.jpg"
-            image.save(image_path)
-            # This is a placeholder. In a real app, you'd upload `image_path` to cloud storage.
-            # Upload to S3
-            url = self.storage.upload_file(image_path, "jpg")
-            if not url:
-                # Fallback if S3 fails
-                url = "https://storage.runpod.io/flux_test_fallback.jpg"
-            return url
+            
+            # 3. SAVE & UPLOAD
+            temp_path = "/tmp/generated_image.png"
+            image.save(temp_path)
+            
+            s3_url = self.storage.upload_file(temp_path, f"images/{os.urandom(4).hex()}.png")
+            return s3_url or "https://storage.runpod.io/flux_test_fallback.jpg"
+        except Exception as e:
+            print(f"FLUX Error: {e}")
+            traceback.print_exc()
+            raise e
         except Exception as e:
             print(f"FLUX Error: {e}")
             traceback.print_exc()
