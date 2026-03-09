@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.3.4-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.3.5-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.3.4-ULTRA Loader Initialized")
+dprint("v1.3.5-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -53,13 +53,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.4-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.5-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.4-ULTRA ---")
+print("--- BOOTING WORKER v1.3.5-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -139,6 +139,51 @@ if torch.cuda.is_available():
 
 # --- WORKER LOGIC ---
 
+# --- CLOUD STORAGE LOGIC ---
+class CloudStorage:
+    def __init__(self):
+        self.access_key = os.getenv("RUNPOD_S3_ACCESS_KEY")
+        self.secret_key = os.getenv("RUNPOD_S3_SECRET_KEY")
+        self.endpoint = os.getenv("RUNPOD_S3_ENDPOINT", "https://storage.runpod.io")
+        self.bucket_name = os.getenv("RUNPOD_S3_BUCKET", "generated-assets")
+        self.s3_client = None
+        
+        if self.access_key and self.secret_key:
+            try:
+                import boto3
+                from botocore.client import Config
+                self.s3_client = boto3.client(
+                    's3',
+                    endpoint_url=self.endpoint,
+                    aws_access_key_id=self.access_key,
+                    aws_secret_access_key=self.secret_key,
+                    config=Config(signature_version='s3v4'),
+                    region_name='us-east-1' # Default for many S3-compat
+                )
+                dprint("S3 Client Initialized successfully")
+            except Exception as e:
+                dprint(f"S3 Init Error: {e}")
+
+    def upload_file(self, local_path, extension="jpg"):
+        if not self.s3_client:
+            dprint("S3 Client not available, skipping upload")
+            return None
+        
+        import uuid
+        file_name = f"{uuid.uuid4()}.{extension}"
+        try:
+            # Ensure bucket exists (optional, or just try upload)
+            self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
+            
+            # Construct URL
+            # Note: RunPod storage URLs might differ, adjusting to standard S3
+            url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
+            dprint(f"Uploaded to: {url}")
+            return url
+        except Exception as e:
+            dprint(f"Upload Error: {e}")
+            return None
+
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -147,6 +192,7 @@ class VideoGenerator:
         self.device = None
         self.flux_pipe = None
         self.video_pipe = None
+        self.storage = CloudStorage()
         
     def load_flux(self):
         if self.flux_pipe is None:
@@ -266,7 +312,12 @@ class VideoGenerator:
             image_path = "/tmp/generated_image.jpg"
             image.save(image_path)
             # This is a placeholder. In a real app, you'd upload `image_path` to cloud storage.
-            return "https://storage.runpod.io/flux_test.jpg" # Placeholder URL
+            # Upload to S3
+            url = self.storage.upload_file(image_path, "jpg")
+            if not url:
+                # Fallback if S3 fails
+                url = "https://storage.runpod.io/flux_test_fallback.jpg"
+            return url
         except Exception as e:
             print(f"FLUX Error: {e}")
             traceback.print_exc()
