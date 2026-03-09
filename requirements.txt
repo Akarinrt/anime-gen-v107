@@ -1,0 +1,16 @@
+runpod
+httpx
+diffusers==0.37.0
+transformers>=4.48.0
+accelerate>=1.0.1
+sentencepiece
+protobuf
+opencv-python-headless
+moviepy==1.0.3
+librosa==0.10.1
+numba
+tqdm
+Pillow
+imageio
+imageio-ffmpeg
+peft
