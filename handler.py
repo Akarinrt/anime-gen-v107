@@ -5,6 +5,10 @@ import builtins
 import importlib.util
 from unittest.mock import MagicMock
 
+print("\n" + "!"*30)
+print("--- [INITIAL BOOT] handler.py v1.3.2-ULTRA ---")
+print("!"*30 + "\n")
+
 # --- STEALTH STABILIZATION PATCHES (v1.2.9-ULTRA) ---
 # Goal: Hide flash-attn, fix infer_schema, HF Auth, and Dynamic Hot-Fixing
 # ==========================================================
@@ -17,7 +21,7 @@ import traceback
 REMOTE_URL = os.getenv("REMOTE_HANDLER_URL")
 if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     try:
-        print(f"\n--- [HOT-UPDATE] Fetching latest logic from {REMOTE_URL} ---")
+        print(f"--- [DYNAMIC-BOOT] Attempting to load from: {REMOTE_URL} ---")
         # Define a special header to avoid caching if possible
         req = urllib.request.Request(REMOTE_URL, headers={'User-Agent': 'RunPod-Dynamic-Loader'})
         with urllib.request.urlopen(req, timeout=10) as response:
@@ -37,13 +41,13 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.1-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.3.2-ULTRA logic... ---\n")
 
 
 import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.1-ULTRA ---")
+print("--- BOOTING WORKER v1.3.2-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
