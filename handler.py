@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.5.2-ULTRA (ID: 333) ---")
+print("--- [EMERGENCY BOOT] handler.py v1.5.3-ULTRA (ID: 222) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.5.2-ULTRA Loader Initialized")
+dprint("v1.5.3-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,11 +56,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.5.2-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.5.3-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.5.2-ULTRA (ID: 333) ---")
+print("--- BOOTING WORKER v1.5.3-ULTRA (ID: 222) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -301,6 +301,17 @@ class VideoGenerator:
                 raise e
             
     def load_video(self, model_name="svd"):
+        # --- AGGRESSIVE FLUX UNLOADING (v1.5.3) ---
+        if self.flux_pipe is not None:
+            dprint("Unloading FLUX for VRAM hand-off...")
+            self.flux_pipe.to("cpu")
+            del self.flux_pipe
+            self.flux_pipe = None
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+            dprint("FLUX unloaded. VRAM cleared.")
+
         if self.video_pipe is None:
             print(f"--- Loading {model_name} with Low CPU Mem Usage & Model Offload ---")
             from diffusers import StableVideoDiffusionPipeline
@@ -403,7 +414,7 @@ def handler(event):
     import gc # FORCE LOCAL IMPORT (SAFE)
     import torch
     
-    print(f"--- [JOB-START-ID-333] Handler v1.5.2-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-222] Handler v1.5.3-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
