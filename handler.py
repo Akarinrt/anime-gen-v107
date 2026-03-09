@@ -152,7 +152,7 @@ os.environ["USE_PEFT_BACKEND"] = "0"
 import runpod
 import traceback
 
-WORKER_VERSION = "1.2.9-ultra"
+WORKER_VERSION = "1.5.6-ULTRA (Catbox Fallback)"
 
 print(f"--- Environment Debug Info ({WORKER_VERSION}) ---")
 print(f"Python: {sys.version}")
@@ -189,34 +189,55 @@ class CloudStorage:
                 dprint(f"S3 Init Error: {e}")
 
     def upload_file(self, local_path, extension="jpg"):
-        if not self.s3_client:
-            dprint("S3 Client not available, skipping upload")
-            return None
-        
         import uuid, time
-        file_name = f"{uuid.uuid4()}.{extension}"
+        if self.s3_client:
+            file_name = f"{uuid.uuid4()}.{extension}"
+            
+            # RETRY LOGIC (DNS/Network glitches)
+            for attempt in range(3):
+                try:
+                    self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
+                    url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
+                    dprint(f"Uploaded to S3: {url} (Attempt {attempt+1})")
+                    return {"url": url}
+                except Exception as e:
+                    dprint(f"S3 Upload Attempt {attempt+1} failed: {e}")
+                    time.sleep(2)
         
-        # RETRY LOGIC (DNS/Network glitches)
-        for attempt in range(3):
-            try:
-                self.s3_client.upload_file(local_path, self.bucket_name, file_name, ExtraArgs={'ACL': 'public-read'})
-                url = f"{self.endpoint}/{self.bucket_name}/{file_name}"
-                dprint(f"Uploaded to: {url} (Attempt {attempt+1})")
-                return {"url": url}
-            except Exception as e:
-                dprint(f"Upload Attempt {attempt+1} failed: {e}")
-                time.sleep(2)
-        
-        # FINAL FALLBACK (v1.5.0): Return Base64 if S3 fails
+        # CATBOX FALLBACK (v1.5.6-ULTRA): Fast file host instead of Base64
         try:
-            import base64
-            with open(local_path, "rb") as f:
-                b64_data = base64.b64encode(f.read()).decode("utf-8")
-            dprint(f"S3 failed. Falling back to Base64 (Size: {len(b64_data)} bytes)")
-            return {"b64": b64_data, "format": extension, "status": "success"}
+            dprint(f"S3 unavailable or failed. Falling back to Catbox.moe for {local_path}...")
+            import requests
+            with open(local_path, 'rb') as f:
+                response = requests.post(
+                    'https://catbox.moe/user/api.php',
+                    data={'reqtype': 'fileupload'},
+                    files={'fileToUpload': f}
+                )
+            if response.status_code == 200:
+                catbox_url = response.text.strip()
+                dprint(f"Catbox Upload Success: {catbox_url}")
+                # We return a dict with url so API knows it's an external link
+                return {"url": catbox_url, "format": extension, "status": "success", "catbox": True}
+            else:
+                dprint(f"Catbox failed with status: {response.status_code} - {response.text}")
         except Exception as e:
-            dprint(f"Critical Fallback Error: {e}")
-            return None
+            dprint(f"Catbox Fallback Error: {e}")
+            
+        # FINAL FALLBACK: Base64 (Only use if Catbox also fails, but avoid for video)
+        if extension in ["png", "jpg"]:
+            try:
+                import base64
+                with open(local_path, "rb") as f:
+                    b64_data = base64.b64encode(f.read()).decode("utf-8")
+                dprint(f"Catbox failed. Falling back to Base64 (Size: {len(b64_data)} bytes)")
+                return {"b64": b64_data, "format": extension, "status": "success"}
+            except Exception as e:
+                dprint(f"Base64 Fallback Error: {e}")
+        else:
+            dprint("Video is too large for Base64 fallback. Aborting upload.")
+            
+        return None
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
