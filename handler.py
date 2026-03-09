@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import gc
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.4.3-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.4-ULTRA (ID: 999) ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -27,7 +27,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.4.3-ULTRA Loader Initialized")
+dprint("v1.4.4-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -56,11 +56,11 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.4.3-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.4-ULTRA logic... ---\n")
 
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.4.3-ULTRA ---")
+print("--- BOOTING WORKER v1.4.4-ULTRA (ID: 999) ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
@@ -352,9 +352,10 @@ gen = None
 
 def handler(event):
     global gen
-    import gc # FORCE LOCAL IMPORT
+    import gc # FORCE LOCAL IMPORT (SAFE)
+    import torch
     
-    print(f"--- [JOB-START] Handler v1.4.3-ULTRA processing event ---")
+    print(f"--- [JOB-START-ID-999] Handler v1.4.4-ULTRA processing event ---")
     
     # Aggressive cleanup at start of EVERY job to clear previous failures
     gc.collect()
