@@ -6,7 +6,7 @@ import importlib.util
 from unittest.mock import MagicMock
 
 print("\n" + "!"*30)
-print("--- [EMERGENCY BOOT] handler.py v1.3.9-ULTRA ---")
+print("--- [EMERGENCY BOOT] handler.py v1.4.0-ULTRA ---")
 print(f"--- [ENV-CHECK] REMOTE_HANDLER_URL: {os.getenv('REMOTE_HANDLER_URL')} ---")
 print(f"--- [ENV-CHECK] HF_TOKEN: {os.getenv('HF_TOKEN')[:4] if os.getenv('HF_TOKEN') else 'None'}... ---")
 print("!"*30 + "\n")
@@ -26,7 +26,7 @@ def dprint(msg):
     print(s)
     DIAG_LOG.append(s)
 
-dprint("v1.3.9-ULTRA Loader Initialized")
+dprint("v1.4.0-ULTRA Loader Initialized")
 
 # --- DYNAMIC HOT-UPDATE LOGIC ---
 # If REMOTE_HANDLER_URL is set, we bypass local code and run from GitHub Raw
@@ -34,8 +34,9 @@ REMOTE_URL = os.getenv("REMOTE_HANDLER_URL")
 if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     try:
         print(f"--- [DYNAMIC-BOOT] Attempting to load from: {REMOTE_URL} ---")
-        # Define a special header to avoid caching if possible
-        req = urllib.request.Request(REMOTE_URL, headers={'User-Agent': 'RunPod-Dynamic-Loader'})
+        import time, random
+        busted_url = f"{REMOTE_URL}?t={int(time.time())}{random.randint(0,1000)}"
+        req = urllib.request.Request(busted_url, headers={'User-Agent': 'RunPod-Dynamic-Loader'})
         with urllib.request.urlopen(req, timeout=10) as response:
             code = response.read().decode('utf-8')
             print(f"--- [HOT-UPDATE] Successfully downloaded {len(code)} bytes ---")
@@ -53,20 +54,15 @@ if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
     except Exception as e:
         print(f"--- [HOT-UPDATE ERROR] Failed to load remote code: {e} ---")
         traceback.print_exc()
-        print("--- [HOT-UPDATE] Falling back to local v1.3.9-ULTRA logic... ---\n")
+        print("--- [HOT-UPDATE] Falling back to local v1.4.0-ULTRA logic... ---\n")
 
-
-import gc
 
 print("\n" + "="*50)
-print("--- BOOTING WORKER v1.3.8-ULTRA ---")
+print("--- BOOTING WORKER v1.4.0-ULTRA ---")
 print("="*50 + "\n")
 
 # 0. Global Memory Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
-
-# 0. Global Memory Optimizations
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # 1. Broad Stealth Import Patching (Proven to hide flash-attn)
 orig_find_spec = importlib.util.find_spec
@@ -239,27 +235,27 @@ class VideoGenerator:
                     token=token
                 )
                 
-                dprint("Loading T5 Encoder (FP16) on CPU to save VRAM...")
+                dprint("Loading T5 Encoder (FP16) FORCED to CPU...")
+                # We use device_map={"": "cpu"} to be absolutely certain
                 t5_encoder = T5EncoderModel.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell",
                     subfolder="text_encoder_2",
                     token=token,
                     torch_dtype=torch.float16,
-                    device_map={"": "cpu"} # STICK TO CPU
+                    device_map={"": "cpu"}
                 )
                 
-                dprint("Loading Flux Pipeline (excluding T5 from GPU)...")
+                dprint("Loading Flux Pipeline (VRAM Optimized)...")
                 self.flux_pipe = FluxPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-schnell", 
                     text_encoder_2=t5_encoder, 
                     tokenizer_2=self.t5_tokenizer,
-                    torch_dtype=torch.bfloat16,
+                    torch_dtype=torch.bfloat16, # Flux stays bfloat16
                     token=token
                 )
-                # CRITICAL: We offload everything to CPU and call to() only when needed
                 self.flux_pipe.enable_model_cpu_offload()
                 torch.cuda.empty_cache()
-                print("--- FLUX pipeline optimized and loaded ---")
+                print("--- FLUX pipeline v1.4.0 optimized ---")
             except Exception as e:
                 err_msg = str(e)
                 if "gated repo" in err_msg.lower() or "401" in err_msg:
