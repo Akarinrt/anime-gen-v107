@@ -33,5 +33,25 @@ RUN python3.11 -m pip install --no-cache-dir --upgrade pip && \
 # Copy source code
 COPY handler.py .
 
+# --- PRE-CACHE MODELS AT BUILD TIME ---
+# To prevent "No space left on device" or "Background writer closed" during runtime,
+# we download the models directly into the Docker image.
+# We use build arguments for HF_TOKEN to allow access to gated models (like FLUX-schnell).
+ARG HF_TOKEN
+ENV HF_TOKEN=$HF_TOKEN
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+
+# Install hf_transfer for much faster and more reliable downloads
+RUN python3.11 -m pip install hf_transfer
+
+# Pre-download FLUX.1-schnell
+RUN huggingface-cli download black-forest-labs/FLUX.1-schnell --token $HF_TOKEN || echo "Failed to cache FLUX, will try at runtime."
+
+# Pre-download Stable Video Diffusion XT
+RUN huggingface-cli download stabilityai/stable-video-diffusion-img2vid-xt-1-1 --token $HF_TOKEN || echo "Failed to cache SVD, will try at runtime."
+
+# Pre-download T5 Encoder explicitly (often the cause of writer errors)
+RUN huggingface-cli download google/t5-v1_1-xxl --token $HF_TOKEN || echo "Failed to cache T5, will try at runtime."
+
 # Command to run using python3.11
 CMD [ "python3.11", "-u", "handler.py" ]
