@@ -287,8 +287,6 @@ class VideoGenerator:
 
     def generate_image(self, prompt):
         try:
-    def generate_image(self, prompt):
-        try:
             self.load_flux()
             
             # 2. RUN INFERENCE
@@ -309,10 +307,6 @@ class VideoGenerator:
             
             s3_url = self.storage.upload_file(temp_path, f"images/{os.urandom(4).hex()}.png")
             return s3_url or "https://storage.runpod.io/flux_test_fallback.jpg"
-        except Exception as e:
-            print(f"FLUX Error: {e}")
-            traceback.print_exc()
-            raise e
         except Exception as e:
             print(f"FLUX Error: {e}")
             traceback.print_exc()
