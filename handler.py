@@ -14,12 +14,14 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "2.0.0-ultra"
+WORKER_VERSION = "2.0.1-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["DIFFUSERS_NO_FLASH_ATTN"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "0"
+os.environ["XFORMERS_DISABLED"] = "1"  # Force disable xformers to prevent schema conflict
+os.environ["XFORMERS_FORCE_DISABLE"] = "1"
 
 # Broad patching to ensure stability
 try:
@@ -35,6 +37,13 @@ try:
                 except: return "() -> ()"
             obj.infer_schema = patched
     apply_patch(torch.library)
+except: pass
+
+# Additional patch specifically for AnimateDiff xformers conflict
+try:
+    import diffusers.models.attention_processor
+    # Force the library to believe xformers is not installed even if it is
+    diffusers.models.attention_processor.is_xformers_available = lambda: False
 except: pass
 
 import runpod
