@@ -1,8 +1,13 @@
 import os
 import sys
+
+# Ultimate Blockers to stop operator registration conflicts
+sys.modules['sageattention'] = None
+sys.modules['xformers'] = None
+sys.modules['xformers.ops'] = None
+
 import types
 import builtins
-import importlib.util
 from unittest.mock import MagicMock
 import urllib.request
 import traceback
@@ -14,7 +19,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "2.0.2-ultra"
+WORKER_VERSION = "2.0.3-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
