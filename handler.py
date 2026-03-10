@@ -2,6 +2,14 @@ import os
 import sys
 
 # Ultimate Blockers to stop operator registration conflicts
+import subprocess
+try:
+    # Aggressively remove sageattention from the container at runtime before torch loads
+    print("--- [ULTRA] Forcibly uninstalling conflicting sageattention... ---")
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "sageattention"])
+except Exception as e:
+    pass
+
 sys.modules['sageattention'] = None
 sys.modules['xformers'] = None
 sys.modules['xformers.ops'] = None
@@ -19,7 +27,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "2.0.3-ultra"
+WORKER_VERSION = "2.0.4-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
