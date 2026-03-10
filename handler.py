@@ -11,30 +11,21 @@ import torch
 import base64
 import io
 
-# --- WORKER v1.6.9-ULTRA (INTELLIGENT LOADER) ---
-# FIX: Handle Base64 inputs for images and stabilize SDPA
+# --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
+# FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "1.6.9-ultra"
+WORKER_VERSION = "1.7.0-ultra"
 
-# 0. Global Memory & Stability Optimizations
+# 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["DIFFUSERS_NO_FLASH_ATTN"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "0"
 
-# 1. Broad Import Patching
-orig_find_spec = importlib.util.find_spec
-def patched_find_spec(name, package=None):
-    if name and ("flash_attn" in name or "flash-attn" in name):
-        return None
-    return orig_find_spec(name, package)
-importlib.util.find_spec = patched_find_spec
-
-# 2. NUCLEAR TORCH STABILIZER
+# Broad patching to ensure stability
 try:
     torch.backends.cuda.enable_flash_sdp(False)
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     torch.backends.cuda.enable_math_sdp(True)
-    
     import torch.library
     def apply_patch(obj):
         if hasattr(obj, "infer_schema"):
@@ -44,40 +35,54 @@ try:
                 except: return "() -> ()"
             obj.infer_schema = patched
     apply_patch(torch.library)
-    try:
-        import torch._library.infer_schema as internal_is
-        apply_patch(internal_is)
-    except: pass
 except: pass
 
 import runpod
 import requests
-
-def get_device():
-    return "cuda" if torch.cuda.is_available() else "cpu"
+from PIL import Image
 
 def robust_load_image(image_input):
-    """Handles URLs, Paths, and raw Base64 strings."""
+    """Ultimate image loader for URLs, Paths, and Base64."""
     from diffusers.utils import load_image
-    from PIL import Image
     
+    if not image_input:
+        raise ValueError("Image input is empty")
+
+    print(f"--- [ULTRA] Attempting to load image from: {str(image_input)[:100]}... ---")
+    
+    # 1. Handle non-strings (already a PIL image or similar)
     if not isinstance(image_input, str):
-        return load_image(image_input)
+        return load_image(image_input).convert("RGB")
     
-    # Check if input is likely Base64
+    # 2. Handle Base64
     if len(image_input) > 500 or image_input.startswith("iVBORw"):
         try:
-            print("--- [DEBUG] Decoding Base64 image input ---")
+            print("--- [DEBUG] Decoding Base64... ---")
             img_data = base64.b64decode(image_input)
             return Image.open(io.BytesIO(img_data)).convert("RGB")
         except Exception as e:
-            print(f"--- [DEBUG] Base64 decode failed, treating as URL/Path: {e} ---")
-            
-    return load_image(image_input)
+            print(f"--- [DEBUG] Base64 decode failed: {e} ---")
+
+    # 3. Handle URLs or Local Paths
+    try:
+        # We manually use requests for better error reporting if it's a URL
+        if image_input.startswith("http"):
+            print("--- [DEBUG] Fetching remote image URL... ---")
+            resp = requests.get(image_input, timeout=30)
+            resp.raise_for_status()
+            # Log content type
+            print(f"--- [DEBUG] Content-Type: {resp.headers.get('Content-Type')} ---")
+            if "text/html" in resp.headers.get('Content-Type', ''):
+                print("--- [WARNING] Received HTML instead of image. URL might be a view link, not DL link. ---")
+            return Image.open(io.BytesIO(resp.content)).convert("RGB")
+        else:
+            return load_image(image_input).convert("RGB")
+    except Exception as e:
+        print(f"--- [ERROR] robust_load_image failed for string input: {e} ---")
+        raise e
 
 class VideoGenerator:
     def __init__(self):
-        self.device = get_device()
         self.flux_pipe = None
         self.video_pipe = None
         self.t5_tokenizer = None
@@ -85,7 +90,7 @@ class VideoGenerator:
         
     def load_flux(self):
         if self.flux_pipe is None:
-            print(f"--- [ULTRA] Loading FLUX.1 (Sequential Offload) ---")
+            print(f"--- [ULTRA] Loading FLUX.1 ---")
             from diffusers import FluxPipeline
             from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
@@ -100,7 +105,7 @@ class VideoGenerator:
 
     def load_video(self):
         if self.video_pipe is None:
-            print(f"--- [ULTRA] Loading SVD XT (Sequential Offload) ---")
+            print(f"--- [ULTRA] Loading SVD XT ---")
             from diffusers import StableVideoDiffusionPipeline
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
             self.video_pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16", token=token)
@@ -128,9 +133,6 @@ class VideoGenerator:
         export_to_video(frames, "/tmp/vid.mp4", fps=7)
         return self.upload("/tmp/vid.mp4")
 
-    def sync_lips(self, v_url, a_url):
-        return v_url # (Mock)
-
 gen = None
 def handler(event):
     global gen
@@ -144,7 +146,6 @@ def handler(event):
         print(f"--- [DEBUG] Job type: {jtype} ({WORKER_VERSION}) ---")
         if jtype == "generate_image": return {"status": "success", "url": gen.generate_image(pay.get('prompt'))}
         if jtype == "generate_video": return {"status": "success", "url": gen.animate_image(pay.get('image_url'), pay.get('prompt'))}
-        if jtype == "sync_lips": return {"status": "success", "url": gen.sync_lips(pay.get('video_url'), pay.get('audio_url'))}
         return {"status": "error", "message": f"Worker {WORKER_VERSION}: Invalid Type {jtype}"}
     except Exception as e:
         traceback.print_exc()
