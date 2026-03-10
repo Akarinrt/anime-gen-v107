@@ -14,7 +14,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "1.8.0-ultra"
+WORKER_VERSION = "1.8.1-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
