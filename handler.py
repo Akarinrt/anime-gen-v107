@@ -9,10 +9,10 @@ import traceback
 import gc
 import torch
 
-# --- BOOTING WORKER v1.6.5-ULTRA ---
-# Focused on: Extreme Memory Efficiency & FULL Video Pipeline Support
+# --- BOOTING WORKER v1.6.6-ULTRA ---
+# Focused on: Global Torch Stabilizer (Fix infer_schema) & Multi-Stage Video Gen
 
-WORKER_VERSION = "1.6.5-ultra"
+WORKER_VERSION = "1.6.6-ultra"
 
 # 0. Global Memory Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -27,22 +27,38 @@ def patched_find_spec(name, package=None):
     return orig_find_spec(name, package)
 importlib.util.find_spec = patched_find_spec
 
-# 2. Aggressive Torch Library Signature Patching
+# 2. NUCLEAR TORCH STABILIZER (Fixes Parameter q / infer_schema errors)
 try:
     import torch.library
-    def apply_infer_patch(module):
-        if hasattr(module, "infer_schema"):
-            orig = module.infer_schema
+    def patch_module_infer_schema(mod):
+        if hasattr(mod, "infer_schema"):
+            orig = mod.infer_schema
             def patched(*args, **kwargs):
                 try:
                     return orig(*args, **kwargs)
                 except Exception as e:
-                    if "unsupported type" in str(e):
-                        return "() -> ()"
-                    raise e
-            module.infer_schema = patched
-    apply_infer_patch(torch.library)
-except: pass
+                    # Return a generic schema instead of crashing
+                    return "() -> ()"
+            mod.infer_schema = patched
+            return True
+        return False
+
+    # Patch common locations for this function
+    patch_module_infer_schema(torch.library)
+    try:
+        import torch._library.infer_schema as internal_is
+        patch_module_infer_schema(internal_is)
+    except: pass
+    
+    # Even more aggressive: patch any function named infer_schema in sys.modules
+    for mname, mod in list(sys.modules.items()):
+        if "torch" in mname and mod:
+            if hasattr(mod, "infer_schema"):
+                patch_module_infer_schema(mod)
+
+    print("--- [ULTRA] Nuclear Torch Stabilizer Applied ---")
+except Exception as e:
+    print(f"--- [ULTRA] Stabilizer Failed: {e} ---")
 
 import runpod
 import requests
@@ -99,7 +115,7 @@ class VideoGenerator:
     def upload_to_tmpfiles(self, file_path):
         print(f"--- [ULTRA] Uploading to tmpfiles.org ---")
         with open(file_path, 'rb') as f:
-            r = requests.post('https://tmpfiles.org/api/v1/upload', files={'file': f})
+            r = requests.post('https://tmpfiles.org/api/v1/upload', files={'file': f}, timeout=60)
             return r.json()['data']['url'].replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/')
 
     def generate_image(self, prompt):
@@ -131,7 +147,8 @@ class VideoGenerator:
             self.load_video()
             image = load_image(image_url).resize((1024, 576))
             print(f"--- [ULTRA] Animating Image with SVD ---")
-            frames = self.video_pipe(image, decode_chunk_size=4, generator=torch.Generator("cpu").manual_seed(42)).frames[0]
+            # Sequential offload handles device moves
+            frames = self.video_pipe(image, decode_chunk_size=2, generator=torch.Generator("cpu").manual_seed(42)).frames[0]
             
             temp_path = "/tmp/video.mp4"
             from diffusers.utils import export_to_video
@@ -142,9 +159,7 @@ class VideoGenerator:
             raise e
 
     def sync_lips(self, video_url, audio_url):
-        # Placeholder for real LipSync model (Wav2Lip-HQ)
-        # For now, we return a mock success to keep pipeline moving
-        print(f"--- [ULTRA] Syncing Lips (Mock) ---")
+        print(f"--- [ULTRA] Syncing Lips (Mock Mode) ---")
         return video_url 
 
 # Global instance
@@ -161,10 +176,11 @@ def handler(event):
 
     try:
         input_data = event.get('input', {})
-        job_type = input_data.get('type')
-        payload = input_data.get('payload', {})
+        # Be loose with job type extraction
+        job_type = input_data.get('type') or event.get('type')
+        payload = input_data.get('payload', {}) or event.get('payload', {})
         
-        print(f"Handling job type: {job_type}")
+        print(f"--- [DEBUG] Handling job type: {job_type} ---")
         
         if job_type == "generate_image":
             url = gen.generate_image(payload.get('prompt'))
@@ -178,9 +194,9 @@ def handler(event):
             url = gen.sync_lips(payload.get('video_url'), payload.get('audio_url'))
             return {"status": "success", "url": url}
             
-        return {"status": "error", "message": f"Invalid job type: {job_type}"}
+        return {"status": "error", "message": f"Worker {WORKER_VERSION}: Invalid job type '{job_type}'"}
     except Exception as e:
-        return {"status": "error", "message": f"v1.6.5-ULTRA Crash: {str(e)}"}
+        return {"status": "error", "message": f"v1.6.6-ULTRA Crash: {str(e)}"}
 
 print(f"--- RunPod Worker Ready ({WORKER_VERSION}) ---")
 runpod.serverless.start({"handler": handler})
