@@ -8,18 +8,20 @@ import urllib.request
 import traceback
 import gc
 import torch
+import base64
+import io
 
-# --- WORKER v1.6.8-ULTRA (THE ULTIMATE STABILITY) ---
-# FIX: 'infer_schema' Parameter q error by disabling problematic SDPA backends
+# --- WORKER v1.6.9-ULTRA (INTELLIGENT LOADER) ---
+# FIX: Handle Base64 inputs for images and stabilize SDPA
 
-WORKER_VERSION = "1.6.8-ultra"
+WORKER_VERSION = "1.6.9-ultra"
 
 # 0. Global Memory & Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["DIFFUSERS_NO_FLASH_ATTN"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "0"
 
-# 1. Broad Import Patching (Bypass Flash-Attn)
+# 1. Broad Import Patching
 orig_find_spec = importlib.util.find_spec
 def patched_find_spec(name, package=None):
     if name and ("flash_attn" in name or "flash-attn" in name):
@@ -27,13 +29,11 @@ def patched_find_spec(name, package=None):
     return orig_find_spec(name, package)
 importlib.util.find_spec = patched_find_spec
 
-# 2. NUCLEAR TORCH STABILIZER (Fixes Parameter q / infer_schema)
+# 2. NUCLEAR TORCH STABILIZER
 try:
-    # DISABLE PROBLEMATIC SDPA BACKENDS (The root cause of the q-type error)
     torch.backends.cuda.enable_flash_sdp(False)
     torch.backends.cuda.enable_mem_efficient_sdp(False)
     torch.backends.cuda.enable_math_sdp(True)
-    print("--- [ULTRA] SDPA Stability Hack Active (Math Only) ---")
     
     import torch.library
     def apply_patch(obj):
@@ -48,15 +48,32 @@ try:
         import torch._library.infer_schema as internal_is
         apply_patch(internal_is)
     except: pass
-    print("--- [ULTRA] Global Torch Stabilizer Active ---")
-except Exception as e:
-    print(f"--- [ULTRA] Stabilizer Init Warning: {e} ---")
+except: pass
 
 import runpod
 import requests
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+def robust_load_image(image_input):
+    """Handles URLs, Paths, and raw Base64 strings."""
+    from diffusers.utils import load_image
+    from PIL import Image
+    
+    if not isinstance(image_input, str):
+        return load_image(image_input)
+    
+    # Check if input is likely Base64
+    if len(image_input) > 500 or image_input.startswith("iVBORw"):
+        try:
+            print("--- [DEBUG] Decoding Base64 image input ---")
+            img_data = base64.b64decode(image_input)
+            return Image.open(io.BytesIO(img_data)).convert("RGB")
+        except Exception as e:
+            print(f"--- [DEBUG] Base64 decode failed, treating as URL/Path: {e} ---")
+            
+    return load_image(image_input)
 
 class VideoGenerator:
     def __init__(self):
@@ -68,7 +85,7 @@ class VideoGenerator:
         
     def load_flux(self):
         if self.flux_pipe is None:
-            print(f"--- [ULTRA] Loading FLUX.1 [schnell] (Sequential Offload) ---")
+            print(f"--- [ULTRA] Loading FLUX.1 (Sequential Offload) ---")
             from diffusers import FluxPipeline
             from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
@@ -102,10 +119,10 @@ class VideoGenerator:
         img.save("/tmp/img.png")
         return self.upload("/tmp/img.png")
 
-    def animate_image(self, url, prompt):
-        from diffusers.utils import load_image, export_to_video
+    def animate_image(self, input_data, prompt):
+        from diffusers.utils import export_to_video
         self.load_video()
-        image = load_image(url).resize((1024, 576))
+        image = robust_load_image(input_data).resize((1024, 576))
         print(f"--- [ULTRA] Producing Video Frames ---")
         frames = self.video_pipe(image, decode_chunk_size=2).frames[0]
         export_to_video(frames, "/tmp/vid.mp4", fps=7)
