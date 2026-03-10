@@ -14,7 +14,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "2.0.1-ultra"
+WORKER_VERSION = "2.0.2-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -44,6 +44,9 @@ try:
     import diffusers.models.attention_processor
     # Force the library to believe xformers is not installed even if it is
     diffusers.models.attention_processor.is_xformers_available = lambda: False
+    
+    # Force SDPA to avoid sageattention
+    os.environ["SAGEATTENTION_DISABLED"] = "1"
 except: pass
 
 import runpod
