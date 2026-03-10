@@ -1,33 +1,47 @@
 import os
 import sys
 
+WORKER_VERSION = "2.0.5-ultra"
+
 # Ultimate Blockers to stop operator registration conflicts
 import subprocess
-try:
-    # Aggressively remove sageattention from the container at runtime before torch loads
-    print("--- [ULTRA] Forcibly uninstalling conflicting sageattention... ---")
-    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "sageattention"])
-except Exception as e:
-    pass
+import types
+import builtins
+from unittest.mock import MagicMock
 
+# 1. Block modules BEFORE torch loads any C++ extensions
 sys.modules['sageattention'] = None
 sys.modules['xformers'] = None
 sys.modules['xformers.ops'] = None
 
-import types
-import builtins
-from unittest.mock import MagicMock
+# 2. Patch PyTorch internals before it registers anything
+import torch
+try:
+    # Patch the internal schema inference that fails
+    if hasattr(torch, "_custom_op") and hasattr(torch._custom_op, "impl") and hasattr(torch._custom_op.impl, "infer_schema"):
+        orig_infer = torch._custom_op.impl.infer_schema
+        def safe_infer_schema(*args, **kwargs):
+            try: return orig_infer(*args, **kwargs)
+            except Exception: return "() -> ()"
+        torch._custom_op.impl.infer_schema = safe_infer_schema
+        print("--- [ULTRA] Patched torch._custom_op.impl.infer_schema ---")
+except Exception as e:
+    print(f"--- [PATCH FAIL] {e} ---")
+
+try:
+    # Aggressively remove sageattention from the container at runtime if it exists
+    print("--- [ULTRA] Cleaning environment... ---")
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "sageattention"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except:
+    pass
+
 import urllib.request
 import traceback
 import gc
-import torch
 import base64
 import io
 
-# --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
-# FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
-
-WORKER_VERSION = "2.0.4-ultra"
+# WORKER v2.0.5-ULTRA
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
