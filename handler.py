@@ -9,33 +9,17 @@ import traceback
 import gc
 import torch
 
-# --- WORKER v1.6.7-ULTRA (THE FINAL STABILIZER) ---
-# Goal: Re-enable Hot-Update & Fix all Global Torch conflicts
+# --- WORKER v1.6.8-ULTRA (THE ULTIMATE STABILITY) ---
+# FIX: 'infer_schema' Parameter q error by disabling problematic SDPA backends
 
-WORKER_VERSION = "1.6.7-ultra"
+WORKER_VERSION = "1.6.8-ultra"
 
-# --- DYNAMIC HOT-UPDATE LOGIC (CRITICAL FOR REMOTE SYNC) ---
-REMOTE_URL = os.getenv("REMOTE_HANDLER_URL")
-if REMOTE_URL and os.getenv("DISABLE_DYNAMIC_LOAD") != "1":
-    try:
-        print(f"\n--- [HOT-UPDATE] v1.6.7 Bootloader: Fetching latest from {REMOTE_URL} ---")
-        req = urllib.request.Request(REMOTE_URL, headers={'User-Agent': 'RunPod-Dynamic-Loader'})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            code = response.read().decode('utf-8')
-            if "WORKER_VERSION" in code: # Safety check
-                print(f"--- [HOT-UPDATE] Loading remote logic... ---")
-                os.environ["DISABLE_DYNAMIC_LOAD"] = "1"
-                exec(code, globals())
-                sys.exit(0)
-    except Exception as e:
-        print(f"--- [HOT-UPDATE ERROR] Fallback to local logic: {e} ---")
-
-# 0. Global Memory Optimizations
+# 0. Global Memory & Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["DIFFUSERS_NO_FLASH_ATTN"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "0"
 
-# 1. Broad Import Patching
+# 1. Broad Import Patching (Bypass Flash-Attn)
 orig_find_spec = importlib.util.find_spec
 def patched_find_spec(name, package=None):
     if name and ("flash_attn" in name or "flash-attn" in name):
@@ -45,6 +29,12 @@ importlib.util.find_spec = patched_find_spec
 
 # 2. NUCLEAR TORCH STABILIZER (Fixes Parameter q / infer_schema)
 try:
+    # DISABLE PROBLEMATIC SDPA BACKENDS (The root cause of the q-type error)
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
+    torch.backends.cuda.enable_math_sdp(True)
+    print("--- [ULTRA] SDPA Stability Hack Active (Math Only) ---")
+    
     import torch.library
     def apply_patch(obj):
         if hasattr(obj, "infer_schema"):
@@ -53,20 +43,14 @@ try:
                 try: return orig(*args, **kwargs)
                 except: return "() -> ()"
             obj.infer_schema = patched
-    
     apply_patch(torch.library)
     try:
         import torch._library.infer_schema as internal_is
         apply_patch(internal_is)
     except: pass
-    
-    # Pre-emptively patch diffusers if already in path
-    for mod in list(sys.modules.values()):
-        if mod and hasattr(mod, "infer_schema"):
-            apply_patch(mod)
-            
     print("--- [ULTRA] Global Torch Stabilizer Active ---")
-except: pass
+except Exception as e:
+    print(f"--- [ULTRA] Stabilizer Init Warning: {e} ---")
 
 import runpod
 import requests
@@ -122,6 +106,7 @@ class VideoGenerator:
         from diffusers.utils import load_image, export_to_video
         self.load_video()
         image = load_image(url).resize((1024, 576))
+        print(f"--- [ULTRA] Producing Video Frames ---")
         frames = self.video_pipe(image, decode_chunk_size=2).frames[0]
         export_to_video(frames, "/tmp/vid.mp4", fps=7)
         return self.upload("/tmp/vid.mp4")
@@ -139,13 +124,14 @@ def handler(event):
         inp = event.get('input', {})
         jtype = inp.get('type') or event.get('type')
         pay = inp.get('payload', {}) or event.get('payload', {})
-        print(f"--- [DEBUG] Job: {jtype} ---")
+        print(f"--- [DEBUG] Job type: {jtype} ({WORKER_VERSION}) ---")
         if jtype == "generate_image": return {"status": "success", "url": gen.generate_image(pay.get('prompt'))}
         if jtype == "generate_video": return {"status": "success", "url": gen.animate_image(pay.get('image_url'), pay.get('prompt'))}
         if jtype == "sync_lips": return {"status": "success", "url": gen.sync_lips(pay.get('video_url'), pay.get('audio_url'))}
-        return {"status": "error", "message": f"v1.6.7: Invalid Type {jtype}"}
+        return {"status": "error", "message": f"Worker {WORKER_VERSION}: Invalid Type {jtype}"}
     except Exception as e:
-        return {"status": "error", "message": f"v1.6.7-ULTRA Crash: {str(e)}"}
+        traceback.print_exc()
+        return {"status": "error", "message": f"{WORKER_VERSION} Crash: {str(e)}"}
 
 print(f"--- RunPod Worker Ready ({WORKER_VERSION}) ---")
 runpod.serverless.start({"handler": handler})
