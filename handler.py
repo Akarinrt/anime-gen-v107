@@ -14,7 +14,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "1.8.1-ultra"
+WORKER_VERSION = "1.8.2-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -109,8 +109,18 @@ class VideoGenerator:
         if self.flux_pipe is None:
             self.unload_video()
             print(f"--- [ULTRA] Loading FLUX.1 (Schnell) ---")
-            from diffusers import FluxPipeline
-            from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
+            
+            # Robust import handling
+            try:
+                from diffusers import FluxPipeline
+                from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
+            except ImportError:
+                print("--- [RECOVERY] Re-importing diffusers/transformers ---")
+                import importlib
+                importlib.invalidate_caches()
+                from diffusers import FluxPipeline
+                from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
+
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
             quant_config = BitsAndBytesConfig(load_in_8bit=True)
             self.t5_tokenizer = AutoTokenizer.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="tokenizer_2", token=token)
@@ -125,7 +135,16 @@ class VideoGenerator:
         if self.video_pipe is None:
             self.unload_flux()
             print(f"--- [ULTRA] Loading SVD XT ---")
-            from diffusers import StableVideoDiffusionPipeline
+            
+            # Robust import handling
+            try:
+                from diffusers import StableVideoDiffusionPipeline
+            except ImportError:
+                print("--- [RECOVERY] Re-importing diffusers for SVD ---")
+                import importlib
+                importlib.invalidate_caches()
+                from diffusers import StableVideoDiffusionPipeline
+                
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
             self.video_pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16", token=token)
             self.video_pipe.enable_sequential_cpu_offload()
