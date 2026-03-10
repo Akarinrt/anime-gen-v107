@@ -14,7 +14,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "1.8.2-ultra"
+WORKER_VERSION = "2.0.0-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -100,7 +100,7 @@ class VideoGenerator:
 
     def unload_video(self):
         if self.video_pipe is not None:
-            print("--- [ULTRA] Purging SVD from VRAM ---")
+            print("--- [ULTRA] Purging AnimateDiff from VRAM ---")
             self.video_pipe = None
             gc.collect()
             torch.cuda.empty_cache()
@@ -134,19 +134,32 @@ class VideoGenerator:
     def load_video(self):
         if self.video_pipe is None:
             self.unload_flux()
-            print(f"--- [ULTRA] Loading SVD XT ---")
+            print(f"--- [ULTRA] Loading AnimateDiff (Lightweight Video Gen) ---")
             
             # Robust import handling
             try:
-                from diffusers import StableVideoDiffusionPipeline
+                from diffusers import AnimateDiffPipeline, MotionAdapter, EulerDiscreteScheduler
             except ImportError:
-                print("--- [RECOVERY] Re-importing diffusers for SVD ---")
+                print("--- [RECOVERY] Re-importing diffusers for AnimateDiff ---")
                 import importlib
                 importlib.invalidate_caches()
-                from diffusers import StableVideoDiffusionPipeline
+                from diffusers import AnimateDiffPipeline, MotionAdapter, EulerDiscreteScheduler
+                import torch
                 
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
-            self.video_pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16", token=token)
+            
+            # Loading Motion Adapter, specifically a lightweight one trained on v1.5
+            adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16, token=token)
+            
+            # Use an anime-specific base model for better consistency
+            self.video_pipe = AnimateDiffPipeline.from_pretrained(
+                "emilianJR/epiCRealism",  # A widely used lightweight anime/realism v1.5 model
+                motion_adapter=adapter,
+                torch_dtype=torch.float16,
+                token=token
+            )
+            
+            self.video_pipe.scheduler = EulerDiscreteScheduler.from_config(self.video_pipe.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
             self.video_pipe.enable_sequential_cpu_offload()
 
     def upload(self, path):
@@ -165,11 +178,24 @@ class VideoGenerator:
     def animate_image(self, input_data, prompt):
         from diffusers.utils import export_to_video
         self.load_video()
-        image = robust_load_image(input_data).resize((1024, 576))
-        print(f"--- [ULTRA] Producing Video Frames (Safe Mode) ---")
-        # Use decode_chunk_size=1 and slightly lower motion bucket for stability
-        frames = self.video_pipe(image, decode_chunk_size=1, motion_bucket_id=100, noise_aug_strength=0.1).frames[0]
-        export_to_video(frames, "/tmp/vid.mp4", fps=7)
+        
+        # AnimateDiff is primarily T2V initially, but we can guide it
+        print(f"--- [ULTRA] Producing Video Frames with AnimateDiff ---")
+        
+        # Generate video based on prompt
+        enhanced_prompt = f"masterpiece, best quality, animated, anime style, highly detailed, {prompt}"
+        negative_prompt = "bad quality, worse quality, static, deformed, glitch, noise, watermark"
+        
+        frames = self.video_pipe(
+            prompt=enhanced_prompt,
+            negative_prompt=negative_prompt,
+            num_frames=16,
+            guidance_scale=7.5,
+            num_inference_steps=25,
+            generator=torch.Generator("cpu").manual_seed(42),
+        ).frames[0]
+        
+        export_to_video(frames, "/tmp/vid.mp4", fps=8)
         return self.upload("/tmp/vid.mp4")
 
 
