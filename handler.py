@@ -14,7 +14,7 @@ import io
 # --- WORKER v1.7.0-ULTRA (OMNILOADER) ---
 # FIX: Handle remote URLs, local paths, and Base64 with detailed diagnostics
 
-WORKER_VERSION = "1.7.0-ultra"
+WORKER_VERSION = "1.8.0-ultra"
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -88,9 +88,30 @@ class VideoGenerator:
         self.t5_tokenizer = None
         self.t5_encoder = None
         
+    def unload_flux(self):
+        if self.flux_pipe is not None:
+            print("--- [ULTRA] Purging FLUX from VRAM ---")
+            del self.flux_pipe
+            del self.t5_encoder
+            del self.t5_tokenizer
+            self.flux_pipe = None
+            self.t5_encoder = None
+            self.t5_tokenizer = None
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    def unload_video(self):
+        if self.video_pipe is not None:
+            print("--- [ULTRA] Purging SVD from VRAM ---")
+            del self.video_pipe
+            self.video_pipe = None
+            gc.collect()
+            torch.cuda.empty_cache()
+
     def load_flux(self):
         if self.flux_pipe is None:
-            print(f"--- [ULTRA] Loading FLUX.1 ---")
+            self.unload_video()
+            print(f"--- [ULTRA] Loading FLUX.1 (Schnell) ---")
             from diffusers import FluxPipeline
             from transformers import T5EncoderModel, BitsAndBytesConfig, AutoTokenizer
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
@@ -105,6 +126,7 @@ class VideoGenerator:
 
     def load_video(self):
         if self.video_pipe is None:
+            self.unload_flux()
             print(f"--- [ULTRA] Loading SVD XT ---")
             from diffusers import StableVideoDiffusionPipeline
             token = os.getenv("HF_TOKEN") or os.getenv("RUNPOD_HF_TOKEN")
@@ -128,10 +150,12 @@ class VideoGenerator:
         from diffusers.utils import export_to_video
         self.load_video()
         image = robust_load_image(input_data).resize((1024, 576))
-        print(f"--- [ULTRA] Producing Video Frames ---")
-        frames = self.video_pipe(image, decode_chunk_size=2).frames[0]
+        print(f"--- [ULTRA] Producing Video Frames (Safe Mode) ---")
+        # Use decode_chunk_size=1 and slightly lower motion bucket for stability
+        frames = self.video_pipe(image, decode_chunk_size=1, motion_bucket_id=100, noise_aug_strength=0.1).frames[0]
         export_to_video(frames, "/tmp/vid.mp4", fps=7)
         return self.upload("/tmp/vid.mp4")
+
 
 gen = None
 def handler(event):
