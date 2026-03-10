@@ -91,9 +91,7 @@ class VideoGenerator:
     def unload_flux(self):
         if self.flux_pipe is not None:
             print("--- [ULTRA] Purging FLUX from VRAM ---")
-            del self.flux_pipe
-            del self.t5_encoder
-            del self.t5_tokenizer
+            # Only delete pipes/encoders, keep the class/module references
             self.flux_pipe = None
             self.t5_encoder = None
             self.t5_tokenizer = None
@@ -103,7 +101,6 @@ class VideoGenerator:
     def unload_video(self):
         if self.video_pipe is not None:
             print("--- [ULTRA] Purging SVD from VRAM ---")
-            del self.video_pipe
             self.video_pipe = None
             gc.collect()
             torch.cuda.empty_cache()
