@@ -1,39 +1,41 @@
 import os
 import sys
 
-WORKER_VERSION = "2.0.5-ultra"
+# WORKER v2.0.6-ULTRA
+WORKER_VERSION = "2.0.6-ultra"
 
-# Ultimate Blockers to stop operator registration conflicts
-import subprocess
+# --- [ULTRA] EXTREME SUPPRESSION BLOCK ---
+# We must protect against CUDA operator registration errors that happen during imports
+try:
+    import torch
+    if hasattr(torch, "_custom_op") and hasattr(torch._custom_op, "impl"):
+        # COMPLETELY DISABLE the failing function
+        torch._custom_op.impl.infer_schema = lambda *a, **k: "() -> ()"
+        print("--- [ULTRA] infer_schema neutralized ---")
+except:
+    pass
+
 import types
 import builtins
+import subprocess
 from unittest.mock import MagicMock
 
-# 1. Block modules BEFORE torch loads any C++ extensions
+# Block modules AT THE SOURCE
 sys.modules['sageattention'] = None
 sys.modules['xformers'] = None
 sys.modules['xformers.ops'] = None
 
-# 2. Patch PyTorch internals before it registers anything
-import torch
+# Aggressively clean pip
 try:
-    # Patch the internal schema inference that fails
-    if hasattr(torch, "_custom_op") and hasattr(torch._custom_op, "impl") and hasattr(torch._custom_op.impl, "infer_schema"):
-        orig_infer = torch._custom_op.impl.infer_schema
-        def safe_infer_schema(*args, **kwargs):
-            try: return orig_infer(*args, **kwargs)
-            except Exception: return "() -> ()"
-        torch._custom_op.impl.infer_schema = safe_infer_schema
-        print("--- [ULTRA] Patched torch._custom_op.impl.infer_schema ---")
-except Exception as e:
-    print(f"--- [PATCH FAIL] {e} ---")
-
-try:
-    # Aggressively remove sageattention from the container at runtime if it exists
-    print("--- [ULTRA] Cleaning environment... ---")
     subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "sageattention"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-except:
-    pass
+except: pass
+
+# --- [ULTRA] PROTECTED IMPORTS ---
+try:
+    import diffusers
+    import transformers
+except Exception as e:
+    print(f"--- [RECOVERY] Import failed but continuing: {e} ---")
 
 import urllib.request
 import traceback
@@ -41,7 +43,7 @@ import gc
 import base64
 import io
 
-# WORKER v2.0.5-ULTRA
+# WORKER v2.0.6-ULTRA
 
 # 0. Stability Optimizations
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
